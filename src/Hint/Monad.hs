@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns, PatternGuards, FlexibleContexts #-}
+{-# LANGUAGE LambdaCase, ViewPatterns, PatternGuards, FlexibleContexts #-}
 
 {-
     Find and match:
@@ -20,6 +20,12 @@ yes = do bar; a <- foo; return a -- do bar; foo
 no = do bar; a <- foo; return b
 yes = do x <- bar; x -- do join bar
 no = do x <- bar; x; x
+yes = do x <- bar; return (f x) -- do f <$> bar
+yes = do x <- bar; return $ f x -- do f <$> bar
+no = do x <- bar; return (f x x)
+yes = do x <- bar; case x of { A -> a; B -> b; } -- do bar >>= \ case A -> a; B -> b
+yes = do x <- bar; y <- case x of { A -> a; B -> b; }; f y -- do y <- bar >>= \ case A -> a; B -> b; f y
+no = do x <- bar; case x of A -> f x; B -> g x
 {-# LANGUAGE RecursiveDo #-}; no = mdo hook <- mkTrigger pat (act >> rmHook hook) ; return hook
 yes = do x <- return y; foo x -- @Suggestion do let x = y; foo x
 yes = do x <- return $ y + z; foo x -- do let x = y + z; foo x
@@ -42,7 +48,7 @@ main = do f a $ sleep 10 -- f a $ sleep 10
 module Hint.Monad(monadHint) where
 
 import Control.Applicative
-import Data.Tuple.Extra
+import Control.Arrow
 import Data.Maybe
 import Data.List
 import Hint.Type
@@ -63,6 +69,8 @@ monadExp decl (parent, x) = case x of
         (view -> App2 op x1 (view -> LamConst1 _)) | op ~= ">>=" -> f x1
         Do _ xs -> [warn "Redundant return" x (Do an y) rs | Just (y, rs) <- [monadReturn xs]] ++
                    [warn "Use join" x (Do an y) rs | Just (y, rs) <- [monadJoin xs ['a'..'z']]] ++
+                   [warn "Use fmap" x (Do an y) rs | Just (y, rs) <- [monadFmap xs]] ++
+                   [warn "Use λ-case" x (Do an y) rs | Just (y, rs) <- [monadCase xs]] ++
                    [warn "Redundant do" x y [Replace Expr (toSS x) [("y", toSS y)] "y"]
                         | [Qualifier _ y] <- [xs], not $ doOperator parent y] ++
                    [suggest "Use let" x (Do an y) rs | Just (y, rs) <- [monadLet xs]] ++
@@ -95,12 +103,34 @@ monadCall (replaceBranches -> (bs@(_:_), gen)) | all isJust res
 monadCall x | x2:_ <- filter (x ~=) badFuncs = let x3 = x2 ++ "_" in  Just (x3, toNamed x3, [Replace Expr (toSS x) [] x3])
 monadCall _ = Nothing
 
+monadFmap :: [Stmt S] -> Maybe ([Stmt S], [Refactoring R.SrcSpan])
+monadFmap (reverse -> q@(Qualifier _ (\ case App _ ret x -> Just (ret, fromParen x)
+                                             InfixApp _ ret (isDol -> true) x -> Just (ret, x)
+                                             _ -> Nothing -> Just (ret, App _ f (view -> Var_ v)))):g@(Generator _ (view -> PVar_ u) x):rest)
+    | ret ~= "return", u == v, v `notElem` vars f
+    = Just (reverse (Qualifier an (InfixApp an f (toNamed "<$>") x):rest),
+            [Replace Stmt (toSS g) [("f", toSS f), ("x", toSS x)] "f <$> x", Delete Stmt (toSS q)])
+monadFmap _ = Nothing
+
 monadReturn :: [Stmt S] -> Maybe ([Stmt S], [Refactoring R.SrcSpan])
 monadReturn (reverse -> q@(Qualifier _ (App _ ret (Var _ v))):g@(Generator _ (PVar _ p) x):rest)
     | ret ~= "return", fromNamed v == fromNamed p
     = Just (reverse (Qualifier an x : rest),
             [Replace Stmt (toSS g) [("x", toSS x)] "x", Delete Stmt (toSS q)])
 monadReturn _ = Nothing
+
+monadCase :: [Stmt S] -> Maybe ([Stmt S], [Refactoring R.SrcSpan])
+monadCase (g@(Generator _ (view -> PVar_ u) x):s@(\ case Qualifier _ x -> Just (Nothing, x)
+                                                         Generator _ w x -> Just (Just w, x)
+                                                         _ -> Nothing -> Just (wm, Case _ (view -> Var_ v) alts)):xs)
+    | u == v && v `notElem` varss xs ++ vars alts
+    = Just <<< (s':) *** (r ++) $ fromMaybe (xs, []) $ monadCase xs
+  where s' = maybe Qualifier (flip Generator) wm (ann x) (InfixApp an x (toNamed ">>=") (LCase an alts))
+        r = [let as = ('a':) . show <$> [0..]
+             in Replace Stmt (toSS g) (("x", toSS x):zip as (toSS <$> alts)) ("x >>= \\ case -> " ++ intercalate "; " (take (length alts) as)),
+             Delete Stmt (toSS s)]
+monadCase (x:xs) = first (x:) <$> monadCase xs
+monadCase [] = Nothing
 
 monadJoin :: [Stmt S] -> String -> Maybe ([Stmt S], [Refactoring R.SrcSpan])
 monadJoin (g@(Generator _ (view -> PVar_ p) x):q@(Qualifier _ (view -> Var_ v)):xs) (c:cs)
