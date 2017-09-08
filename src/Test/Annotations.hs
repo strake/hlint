@@ -22,9 +22,7 @@ import Test.Util
 data Test = Test SrcLoc String (Maybe String)
 
 testAnnotations :: [Setting] -> FilePath -> IO ()
-testAnnotations setting file = do
-    tests <- parseTestFile file
-    mapM_ f tests
+testAnnotations setting file = parseTestFile file >>= mapM_ f
     where
         f (Test loc inp out) = do
             ideas <- applyHintFile defaultParseFlags setting file $ Just inp
@@ -59,10 +57,9 @@ testAnnotations setting file = do
 
 
 parseTestFile :: FilePath -> IO [Test]
-parseTestFile file = do
-    src <- readFile file
+parseTestFile file =
     -- we remove all leading # symbols since Yaml only lets us do comments that way
-    return $ f False $ zip [1..] $ map (\x -> fromMaybe x $ stripPrefix "# " x) $ lines src
+    f False . zip [1..] . map (\x -> fromMaybe x $ stripPrefix "# " x) . lines <$> readFile file
     where
         open = isPrefixOf "<TEST>"
         shut = isPrefixOf "</TEST>"
