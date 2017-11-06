@@ -19,6 +19,7 @@ import System.FilePath
 import System.IO
 import System.Process(readProcess)
 import Language.Preprocessor.Cpphs
+import HSE.All(CppFlags(..))
 import Language.Haskell.Exts(defaultParseMode, baseLanguage)
 import Language.Haskell.Exts.Extension
 import Data.Maybe
@@ -71,13 +72,6 @@ exitWithHelp = do
     exitSuccess
 
 
--- | What C pre processor should be used.
-data CppFlags
-    = NoCpp -- ^ No pre processing is done.
-    | CppSimple -- ^ Lines prefixed with @#@ are stripped.
-    | Cpphs CpphsOptions -- ^ The @cpphs@ library is used.
-
-
 -- | When to colour terminal output.
 data ColorMode
     = Never  -- ^ Terminal output will never be coloured.
@@ -114,6 +108,7 @@ data Cmd
         ,cmdCppSimple :: Bool
         ,cmdCppAnsi :: Bool
         ,cmdJson :: Bool                -- ^ display hint data as JSON
+        ,cmdCC :: Bool                  -- ^ display hint data as Code Climate Issues
         ,cmdNoSummary :: Bool           -- ^ do not show the summary info
         ,cmdOnly :: [String]            -- ^ specify which hints explicitly
         ,cmdNoExitCode :: Bool
@@ -174,6 +169,7 @@ mode = cmdArgsMode $ modes
         ,cmdCppSimple = nam_ "cpp-simple" &= help "Use a simple CPP (strip # lines)"
         ,cmdCppAnsi = nam_ "cpp-ansi" &= help "Use CPP in ANSI compatibility mode"
         ,cmdJson = nam_ "json" &= help "Display hint data as JSON"
+        ,cmdCC = nam_ "cc" &= help "Display hint data as Code Climate Issues"
         ,cmdNoSummary = nam_ "no-summary" &= help "Do not show summary information"
         ,cmdOnly = nam "only" &= typ "HINT" &= help "Specify which hints explicitly"
         ,cmdNoExitCode = nam_ "no-exit-code" &= help "Do not give a negative exit if hints"
