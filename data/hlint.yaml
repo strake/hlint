@@ -307,6 +307,7 @@
     - hint: {lhs: x *> return y, rhs: x Data.Functor.$> y}
     - hint: {lhs: pure x <* y, rhs: x Data.Functor.<$ y}
     - hint: {lhs: return x <* y, rhs: x Data.Functor.<$ y}
+    - warn: {lhs: const a <$> x, rhs: a <$ x}
 
     # MONAD
 
@@ -332,8 +333,9 @@
     - warn: {lhs: x >>= id, rhs: Control.Monad.join x}
     - warn: {lhs: id =<< x, rhs: Control.Monad.join x}
     - hint: {lhs: a >> return (), rhs: Control.Monad.void a, side: isAtom a || isApp a}
-    - warn: {lhs: fmap (const ()), rhs: Control.Monad.void}
-    - warn: {lhs: const () <$> x, rhs: Control.Monad.void x}
+    - hint: {lhs: return () << a, rhs: Control.Monad.void a, side: isAtom a || isApp a}
+    - warn: {lhs: a >> return x, rhs: x <$ a}
+    - warn: {lhs: return x << a, rhs: x <$ a}
     - warn: {lhs: flip (>=>), rhs: (<=<)}
     - warn: {lhs: flip (<=<), rhs: (>=>)}
     - warn: {lhs: flip (>>=), rhs: (=<<)}
@@ -377,6 +379,7 @@
     - warn: {lhs: flip for_, rhs: traverse_}
     - warn: {lhs: foldr (*>) (pure ()), rhs: sequenceA_}
     - warn: {lhs: foldr (<|>) empty, rhs: asum}
+    - warn: {lhs: liftA2 id, rhs: (<*>)}
     - warn: {lhs: liftA2 (flip ($)), rhs: (<**>)}
     - warn: {lhs: Just <$> a <|> pure Nothing, rhs: optional a}
     - hint: {lhs: m >>= pure . f, rhs: f <$> m}
